@@ -189,17 +189,27 @@ class SequenceTrajectoryDataset(Dataset):
         observations: Dict[str, torch.Tensor],
         actual_len: int,
     ) -> Dict[str, torch.Tensor]:
-        """Pad observations to seq_len."""
+        """Pad observations to seq_len along first (sequence) dimension."""
         pad_len = self.seq_len - actual_len
         padded = {}
 
         for key, tensor in observations.items():
-            # Pad along first dimension (sequence)
+            # torch.nn.functional.pad expects padding in reverse order:
+            # (left_last_dim, right_last_dim, left_second_last_dim, ...)
+            # To pad first dimension, we need zeros for all dims except first
             if tensor.dim() == 1:
+                # [seq_len] -> pad right with pad_len
                 padded[key] = torch.nn.functional.pad(tensor, (0, pad_len))
+            elif tensor.dim() == 2:
+                # [seq_len, features] -> pad: (0, 0, 0, pad_len)
+                # (left_feat=0, right_feat=0, left_seq=0, right_seq=pad_len)
+                padded[key] = torch.nn.functional.pad(tensor, (0, 0, 0, pad_len))
             else:
-                pad_shape = [0] * (2 * (tensor.dim() - 1)) + [0, pad_len]
-                padded[key] = torch.nn.functional.pad(tensor, pad_shape[::-1])
+                # For higher dims, build padding tuple dynamically
+                # We want to pad only the first dimension (right side)
+                pad_tuple = [0] * (2 * tensor.dim())
+                pad_tuple[-1] = pad_len  # right side of first dim
+                padded[key] = torch.nn.functional.pad(tensor, tuple(pad_tuple))
 
         return padded
 
