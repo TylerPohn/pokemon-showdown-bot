@@ -160,6 +160,15 @@ class BCTrainer:
         logger.info(f"Model has {num_params:,} trainable parameters")
         logger.info(f"Effective batch size: {config.effective_batch_size}")
 
+    def _move_to_device(self, data):
+        """Recursively move tensors to device, handling nested dicts."""
+        if isinstance(data, dict):
+            return {k: self._move_to_device(v) for k, v in data.items()}
+        elif isinstance(data, torch.Tensor):
+            return data.to(self.config.device)
+        else:
+            return data
+
     def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
         """Train for one epoch with AMP and gradient accumulation."""
         self.policy.train()
@@ -172,8 +181,8 @@ class BCTrainer:
         self.optimizer.zero_grad()
 
         for step, batch in enumerate(pbar):
-            # Move to device
-            batch = {k: v.to(self.config.device) for k, v in batch.items()}
+            # Move to device (handles nested dicts of tensors)
+            batch = self._move_to_device(batch)
             actions = batch.pop("action")
 
             # Forward pass with optional AMP

@@ -47,17 +47,17 @@ def create_policy(
             **kwargs
         )
     elif model_type in ("decoder", "decoder-large"):
-        from .decoder_policy import DecoderPolicy
+        from .decoder_policy import DecoderPolicyWithEncoder
         config = kwargs.get("config", LARGE_CONFIG)
-        return DecoderPolicy(config)
+        return DecoderPolicyWithEncoder(config)
     elif model_type == "decoder-small":
-        from .decoder_policy import DecoderPolicy
+        from .decoder_policy import DecoderPolicyWithEncoder
         config = kwargs.get("config", SMALL_CONFIG)
-        return DecoderPolicy(config)
+        return DecoderPolicyWithEncoder(config)
     elif model_type == "decoder-medium":
-        from .decoder_policy import DecoderPolicy
+        from .decoder_policy import DecoderPolicyWithEncoder
         config = kwargs.get("config", MEDIUM_CONFIG)
-        return DecoderPolicy(config)
+        return DecoderPolicyWithEncoder(config)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 

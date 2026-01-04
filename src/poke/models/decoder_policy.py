@@ -461,3 +461,78 @@ def create_decoder_policy(config: Optional[ScaledEncoderConfig] = None) -> Decod
         config = LARGE_CONFIG
 
     return DecoderPolicy(config)
+
+
+class DecoderPolicyWithEncoder(nn.Module):
+    """DecoderPolicy wrapped with a simple input encoder.
+
+    Converts dict observations from the dataset into the tensor format
+    expected by DecoderPolicy. This handles the FeaturePreprocessor output.
+    """
+
+    def __init__(self, config: ScaledEncoderConfig):
+        super().__init__()
+        self.config = config
+
+        # The decoder expects [batch, seq_len, d_model] input
+        self.decoder = DecoderPolicy(config)
+
+        # Simple projection from observation features to d_model
+        # FeaturePreprocessor outputs: pokemon_features (384), hazards (16),
+        # plus scalars for team_id, weather, terrain = ~403 features per timestep
+        self.obs_dim = 384 + 16 + 3  # pokemon_features + hazards + 3 scalars
+        self.input_proj = nn.Linear(self.obs_dim, config.d_model)
+
+    def forward(
+        self,
+        batch: dict,
+        action_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Forward pass accepting dict observation batch.
+
+        Args:
+            batch: Dict containing:
+                - observations: dict of feature tensors
+                - seq_len: actual sequence lengths
+                - attention_mask: (optional) attention mask
+            action_mask: Valid action mask [batch, action_dim]
+
+        Returns:
+            action_probs: [batch, action_dim]
+            value: [batch] or None
+        """
+        obs = batch["observations"]
+
+        # Concatenate observation features
+        # Each is [batch, seq_len, feat_dim] or [batch, seq_len]
+        features = []
+
+        # Pokemon features: [batch, seq_len, 384]
+        if "pokemon_features" in obs:
+            features.append(obs["pokemon_features"])
+
+        # Hazards: [batch, seq_len, 16]
+        if "hazards" in obs:
+            features.append(obs["hazards"])
+
+        # Scalars: [batch, seq_len] -> [batch, seq_len, 1]
+        for key in ["team_id", "weather", "terrain"]:
+            if key in obs:
+                scalar = obs[key]
+                if scalar.dim() == 2:
+                    scalar = scalar.unsqueeze(-1).float()
+                features.append(scalar)
+
+        # Concatenate all features: [batch, seq_len, obs_dim]
+        if len(features) == 0:
+            raise ValueError(f"No observation features found. Keys: {list(obs.keys())}")
+
+        x = torch.cat(features, dim=-1)
+
+        # Project to d_model
+        x = self.input_proj(x)  # [batch, seq_len, d_model]
+
+        # Forward through decoder
+        action_probs, value, _ = self.decoder(x, action_mask)
+
+        return action_probs, value
