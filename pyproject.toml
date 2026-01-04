@@ -5,7 +5,7 @@ requires-python = ">=3.10"
 dependencies = [
     "torch>=2.0",
     "numpy>=1.24,<2",
-    "poke-env>=0.7",
+    "poke-env>=0.11",
     "pandas>=2.0",
     "pydantic>=2.0",
     "tqdm",
