@@ -1,36 +1,46 @@
 # GPU Deployment Handoff - 200M Decoder Training
 
-## Status: TRAINING IN PROGRESS
+## Status: VALIDATION COMPLETE ✅
 
-Validation training with `decoder-small` is currently running on the GPU.
+`decoder-small` training completed successfully on NVIDIA A10G GPU!
 
 ## What's Been Done
 
 1. **Code synced to GPU** - Latest code pulled from GitHub
-2. **Dockerfile created** with numpy<2 pin for PyTorch 2.1 compatibility
-3. **Docker image built** - `poke-trainer` image ready
+2. **PyTorch 2.5 + CUDA 12.4** - Upgraded for numpy 2 / poke-env 0.11 compatibility
+3. **Docker image built** - `poke-trainer` with all dependencies
 4. **CUDA verified** - `CUDA: True, Device: NVIDIA A10G`
-5. **Training started** - decoder-small validation run (1 epoch)
+5. **Validation training complete** - decoder-small (3.71M params), 1 epoch, ~40 it/s
+
+## Issues Fixed During Deployment
+
+1. **poke-env import error** - Upgraded to poke-env>=0.11 (new module structure)
+2. **NumPy conflict** - Upgraded to PyTorch 2.5 + numpy>=2.0 (poke-env requires numpy 2)
+3. **Sequence padding bug** - Fixed `_pad_observations` to pad first dimension correctly
+4. **BCTrainer nested dict handling** - Added `_move_to_device` helper for nested observation dicts
+5. **DecoderPolicy interface** - Created `DecoderPolicyWithEncoder` wrapper to convert dict->tensor
 
 ## GPU Connection
 
 ```bash
-# Set AWS credentials
-(get them from .env, do not put them in markdown files)
+# Set AWS credentials (get from .env)
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
 
-# Check training status (replace COMMAND_ID with current one)
+# Check command status
 aws ssm get-command-invocation \
-  --command-id "8c3afb98-ac99-4655-bd0e-e226df76150c" \
+  --command-id "COMMAND_ID" \
   --instance-id "i-0d37b84d08727a481" \
   --region us-east-1
 ```
 
-## Current Training Command
+## Training Commands
 
+### Small model (validation)
 ```bash
 cd /home/ec2-user/pokemon-showdown-bot && docker run --gpus all \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/checkpoints:/app/checkpoints \
+  -v /home/ec2-user/pokemon-showdown-bot/data:/app/data \
+  -v /home/ec2-user/pokemon-showdown-bot/checkpoints:/app/checkpoints \
   poke-trainer python -m poke.training.train_decoder \
   --model-size decoder-small \
   --epochs 1 \
@@ -38,26 +48,22 @@ cd /home/ec2-user/pokemon-showdown-bot && docker run --gpus all \
   --batch-size 16
 ```
 
-## Next Steps After Validation
-
-Once decoder-small completes successfully:
-
-1. **Scale to medium model**:
+### Medium model (~50M params)
 ```bash
 docker run --gpus all \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/checkpoints:/app/checkpoints \
+  -v /home/ec2-user/pokemon-showdown-bot/data:/app/data \
+  -v /home/ec2-user/pokemon-showdown-bot/checkpoints:/app/checkpoints \
   poke-trainer python -m poke.training.train_decoder \
   --model-size decoder-medium \
   --epochs 5 \
   --data-path /app/data/trajectories/trajectories.jsonl
 ```
 
-2. **Full 200M model training**:
+### Full 200M model
 ```bash
 docker run --gpus all \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/checkpoints:/app/checkpoints \
+  -v /home/ec2-user/pokemon-showdown-bot/data:/app/data \
+  -v /home/ec2-user/pokemon-showdown-bot/checkpoints:/app/checkpoints \
   poke-trainer python -m poke.training.train_decoder \
   --model-size decoder \
   --epochs 10 \
@@ -65,34 +71,36 @@ docker run --gpus all \
   --use-wandb
 ```
 
-## Key Files on GPU
+## Key Files
 
 - Project: `/home/ec2-user/pokemon-showdown-bot/`
 - Training data: `data/trajectories/trajectories.jsonl` (200 trajectories, 3,721 samples)
 - Checkpoints: `checkpoints/`
 - Docker image: `poke-trainer`
 
+## Model Sizes Reference
+
+| Size | Params | model_type | Notes |
+|------|--------|------------|-------|
+| Small | ~3.7M | `decoder-small` | For validation/testing |
+| Medium | ~50M | `decoder-medium` | Faster iteration |
+| Large | ~200M | `decoder` | Production model |
+
 ## Running SSM Commands
 
-Template for running commands on GPU:
+Template:
 ```bash
 aws ssm send-command \
   --instance-ids "i-0d37b84d08727a481" \
   --document-name "AWS-RunShellScript" \
-  --parameters commands='["YOUR_COMMAND_HERE"]' \
+  --parameters 'commands=["YOUR_COMMAND_HERE"]' \
   --region us-east-1 \
   --timeout-seconds 600
 ```
 
-## Issues Fixed
+## Next Steps
 
-- **NumPy 2.x incompatibility**: Fixed by pinning `numpy>=1.24,<2` in pyproject.toml (commit d63ee34)
-- Docker image now uses cached numpy 1.26.0 from base PyTorch image
-
-## Model Sizes Reference
-
-| Size | Params | model_type |
-|------|--------|------------|
-| Small | ~3.6M | `decoder-small` |
-| Medium | ~50M | `decoder-medium` |
-| Large | ~200M | `decoder` |
+1. **Scale training data** - Need more trajectories for meaningful training
+2. **Run medium model** - Test scaling before full 200M
+3. **Enable wandb** - Track training metrics
+4. **Full training** - Run decoder (200M) with proper hyperparameters
