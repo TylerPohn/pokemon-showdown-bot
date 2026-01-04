@@ -536,3 +536,11 @@ class DecoderPolicyWithEncoder(nn.Module):
         action_probs, value, _ = self.decoder(x, action_mask)
 
         return action_probs, value
+
+    def set_value_head(self, value_head: nn.Module):
+        """Set the value head on the underlying decoder."""
+        self.decoder.set_value_head(value_head)
+
+    def parameters(self, *args, **kwargs):
+        """Return all parameters including input projection and decoder."""
+        return super().parameters(*args, **kwargs)
